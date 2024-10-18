@@ -46,6 +46,13 @@ type MTR struct {
 	Count    int      `yaml:"count" json:"count" default:"10"`
 }
 
+type MTRtcp struct {
+	Interval duration `yaml:"interval" json:"interval" default:"5s"`
+	Timeout  duration `yaml:"timeout" json:"timeout" default:"4s"`
+	MaxHops  int      `yaml:"max-hops" json:"max-hops" default:"30"`
+	Count    int      `yaml:"count" json:"count" default:"10"`
+}
+
 type ICMP struct {
 	Interval duration `yaml:"interval" json:"interval" default:"5s"`
 	Timeout  duration `yaml:"timeout" json:"timeout" default:"4s"`
@@ -62,6 +69,7 @@ type Config struct {
 	Conf    `yaml:"conf" json:"conf"`
 	ICMP    `yaml:"icmp" json:"icmp"`
 	MTR     `yaml:"mtr" json:"mtr"`
+	MTRtcp  `yaml:"mtr_tcp" json:"mtr_tcp"`
 	TCP     `yaml:"tcp" json:"tcp"`
 	HTTPGet `yaml:"http_get" json:"http_get"`
 	Targets `yaml:"targets" json:"targets"`
@@ -115,16 +123,16 @@ func (sc *SafeConfig) ReloadConfig(logger log.Logger, confFile string) (err erro
 
 	// Validate and Filter config
 	targets := Targets{}
-	re := regexp.MustCompile("^ICMP|MTR|ICMP+MTR|TCP|HTTPGet$")
+	re := regexp.MustCompile("^ICMP|MTR|ICMP+MTR|MTRtcp|TCP|HTTPGet$")
 	for _, t := range c.Targets {
 		if common.SrvRecordCheck(t.Host) {
 			found := re.MatchString(t.Type)
 			if !found {
-				level.Error(logger).Log("type", "Config", "func", "ReloadConfig", "msg", fmt.Sprintf("Target '%s' has unknown check type '%s' must be one of (ICMP|MTR|ICMP+MTR|TCP|HTTPGet)", t.Name, t.Type))
+				level.Error(logger).Log("type", "Config", "func", "ReloadConfig", "msg", fmt.Sprintf("Target '%s' has unknown check type '%s' must be one of (ICMP|MTR|ICMP+MTR|MTRtcp|TCP|HTTPGet)", t.Name, t.Type))
 				continue
 			}
 			// Check that SRV record's type is TCP, if config's type is TCP
-			if t.Type == "TCP" {
+			if t.Type == "TCP" || t.Type == "MTRtcp" {
 				if !strings.EqualFold(t.Type, strings.Split(t.Host, ".")[1][1:]) {
 					level.Error(logger).Log("type", "Config", "func", "ReloadConfig", "msg", fmt.Sprintf("Target %s type '%s' doesn't match SRV record proto '%s'", t.Name, t.Type, strings.Split(t.Host, ".")[1][1:]))
 					continue
@@ -157,7 +165,7 @@ func (sc *SafeConfig) ReloadConfig(logger log.Logger, confFile string) (err erro
 		} else {
 			found := re.MatchString(t.Type)
 			if !found {
-				level.Error(logger).Log("type", "Config", "func", "ReloadConfig", "msg", "Target '%s' has unknown check type '%s' must be one of (ICMP|MTR|ICMP+MTR|TCP|HTTPGet)", t.Name, t.Type)
+				level.Error(logger).Log("type", "Config", "func", "ReloadConfig", "msg", "Target '%s' has unknown check type '%s' must be one of (ICMP|MTR|ICMP+MTR|MTRtcp|TCP|HTTPGet)", t.Name, t.Type)
 				continue
 			}
 
@@ -183,14 +191,17 @@ func (sc *SafeConfig) ReloadConfig(logger log.Logger, confFile string) (err erro
 	}
 
 	// Config precheck
-	if c.ICMP.Interval <= 0 || c.MTR.Interval <= 0 || c.TCP.Interval <= 0 || c.HTTPGet.Interval <= 0 {
-		return fmt.Errorf("intervals (icmp,mtr,tcp,http_get) must be >0")
+	if c.ICMP.Interval <= 0 || c.MTR.Interval <= 0 || c.MTRtcp.Interval <= 0 || c.TCP.Interval <= 0 || c.HTTPGet.Interval <= 0 {
+		return fmt.Errorf("intervals (icmp,mtr,mtr_tcp,tcp,http_get) must be >0")
 	}
 	if c.MTR.MaxHops < 0 || c.MTR.MaxHops > 65500 {
 		return fmt.Errorf("mtr.max-hops must be between 0 and 65500")
 	}
 	if c.MTR.Count < 0 || c.MTR.Count > 65500 {
 		return fmt.Errorf("mtr.count must be between 0 and 65500")
+	}
+	if c.MTRtcp.Count < 0 || c.MTRtcp.Count > 65500 {
+		return fmt.Errorf("mtr_tcp.count must be between 0 and 65500")
 	}
 
 	sc.Lock()
@@ -230,6 +241,7 @@ func HasDuplicateTargets(m Targets) (bool, error) {
 		"TCP":     map[string]bool{},
 		"ICMP":    map[string]bool{},
 		"MTR":     map[string]bool{},
+		"MTRtcp":  map[string]bool{},
 		"HTTPGet": map[string]bool{},
 	}
 

@@ -34,6 +34,9 @@ targets:
   - name: cloudflare-dns-https
     host: 1.1.1.1:443
     type: TCP
+  - name: cloudflare-dns-mtr_tcp
+    host: 1.1.1.1:443
+    type: MTRtcp
   - name: download-file-64M
     host: http://test-debit.free.fr/65536.rnd
     type: HTTPGet

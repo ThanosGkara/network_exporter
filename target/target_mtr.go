@@ -24,6 +24,7 @@ type MTR struct {
 	timeout  time.Duration
 	maxHops  int
 	count    int
+	mtrtype  common.MtrType
 	ipv6     bool
 	labels   map[string]string
 	result   *mtr.MtrResult
@@ -33,7 +34,7 @@ type MTR struct {
 }
 
 // NewMTR starts a new monitoring goroutine
-func NewMTR(logger log.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, labels map[string]string, ipv6 bool) (*MTR, error) {
+func NewMTR(logger log.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, mtrtype common.MtrType, labels map[string]string, ipv6 bool) (*MTR, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -47,6 +48,7 @@ func NewMTR(logger log.Logger, icmpID *common.IcmpID, startupDelay time.Duration
 		timeout:  timeout,
 		maxHops:  maxHops,
 		count:    count,
+		mtrtype:  mtrtype, // initialize with MTR as default
 		ipv6:     ipv6,
 		labels:   labels,
 		stop:     make(chan struct{}),
