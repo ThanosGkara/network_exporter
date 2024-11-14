@@ -196,7 +196,7 @@ func (p *MTR) CheckActiveTargets() (err error) {
 				}
 				return false
 			}(ipAddrs, targetIp) {
-				targetType := common.ParseMtrType(target.Type)
+				targetType := common.ParseMtrType(target.Type) // getting the MTR type before re-adding the target
 				p.RemoveTarget(targetName)
 				err := p.AddTarget(target.Name, target.Host, target.SourceIp, targetType, target.Labels.Kv)
 				if err != nil {
