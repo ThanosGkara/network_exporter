@@ -9,7 +9,6 @@ import (
 	"github.com/syepes/network_exporter/pkg/common"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 // pkg/icmp/icmp.go
@@ -19,32 +18,8 @@ const (
 	protocolIPv6ICMP = 58 // ICMP for IPv6
 )
 
-// TcpTraceroute performs a TCP traceroute to the destination address
-func TcpTraceroute(destAddr string, srcAddr string, port int, maxHops int, timeout time.Duration, ipv6 bool) ([]common.IcmpReturn, error) {
-	var results []common.IcmpReturn
-	dstIp := net.ParseIP(destAddr)
-	if dstIp == nil {
-		return results, fmt.Errorf("destination ip: %v is invalid", destAddr)
-	}
-
-	for ttl := 1; ttl <= maxHops; ttl++ {
-		hop, err := tcpPing(destAddr, srcAddr, port, ttl, timeout, ipv6)
-		if err != nil {
-			hop.Success = false
-		}
-		results = append(results, hop)
-
-		// If the destination is reached, stop the traceroute
-		if hop.Addr == destAddr {
-			break
-		}
-	}
-
-	return results, nil
-}
-
 // tcpPing performs a TCP ping to the destination address with a specific TTL
-func tcpPing(destAddr string, srcAddr string, port int, ttl int, timeout time.Duration, ipv6 bool) (common.IcmpReturn, error) {
+func TCPPing(destAddr string, srcAddr string, port int, ttl int, timeout time.Duration, ipv6 bool) (common.IcmpReturn, error) {
 	var hop common.IcmpReturn
 	dstIp := net.ParseIP(destAddr)
 	if dstIp == nil {

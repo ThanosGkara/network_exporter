@@ -93,7 +93,7 @@ func (t *MTR) Stop() {
 
 func (t *MTR) mtr() {
 	icmpID := int(t.icmpID.Get())
-	data, err := mtr.Mtr(t.host, t.srcAddr, t.maxHops, t.count, t.timeout, icmpID, t.ipv6)
+	data, err := mtr.Mtr(t.host, t.srcAddr, t.maxHops, t.count, t.timeout, icmpID, t.mtrtype, t.ipv6)
 	if err != nil {
 		level.Error(t.logger).Log("type", "MTR", "func", "mtr", "msg", fmt.Sprintf("%s", err))
 	}
