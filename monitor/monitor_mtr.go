@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,7 +87,7 @@ func (p *MTR) AddTargets() {
 			if target.Type == "MTR" || target.Type == "MTRtcp" || target.Type == "ICMP+MTR" {
 				err := p.AddTarget(target.Name, target.Host, target.SourceIp, common.ParseMtrType(target.Type), target.Labels.Kv)
 				if err != nil {
-					level.Warn(p.logger).Log("type", "MTR", "func", "AddTargets", "msg", fmt.Sprintf("Skipping target: %s", target.Host), "err", err)
+					level.Warn(p.logger).Log("type", target.Type, "func", "AddTargets", "msg", fmt.Sprintf("Skipping target: %s", target.Host), "err", err)
 				}
 			}
 		}
@@ -106,9 +107,14 @@ func (p *MTR) AddTargetDelayed(name string, host string, srcAddr string, mtrtype
 	defer p.mtx.Unlock()
 
 	// Resolve hostnames
-	ipAddrs, err := common.DestAddrs(context.Background(), host, p.resolver.Resolver, p.resolver.Timeout)
+	ip_port_split := strings.Split(host, ":")
+	ipAddrs, err := common.DestAddrs(context.Background(), ip_port_split[0], p.resolver.Resolver, p.resolver.Timeout)
 	if err != nil || len(ipAddrs) == 0 {
 		return err
+	}
+
+	if len(ip_port_split) == 2 {
+		ipAddrs[0] = fmt.Sprintf("%s:%s", ipAddrs[0], ip_port_split[1])
 	}
 
 	target, err := target.NewMTR(p.logger, p.icmpID, startupDelay, name, ipAddrs[0], srcAddr, p.interval, p.timeout, p.maxHops, p.count, mtrtype, labels, p.ipv6)
@@ -183,9 +189,14 @@ func (p *MTR) CheckActiveTargets() (err error) {
 			if target.Name != targetName {
 				continue
 			}
-			ipAddrs, err := common.DestAddrs(context.Background(), target.Host, p.resolver.Resolver, p.resolver.Timeout)
+			ip_port_split := strings.Split(target.Host, ":")
+			ipAddrs, err := common.DestAddrs(context.Background(), ip_port_split[0], p.resolver.Resolver, p.resolver.Timeout)
 			if err != nil || len(ipAddrs) == 0 {
 				return err
+			}
+
+			if len(ip_port_split) == 2 {
+				ipAddrs[0] = fmt.Sprintf("%s:%s", ipAddrs[0], ip_port_split[1])
 			}
 
 			if !func(ips []string, target string) bool {
@@ -200,7 +211,7 @@ func (p *MTR) CheckActiveTargets() (err error) {
 				p.RemoveTarget(targetName)
 				err := p.AddTarget(target.Name, target.Host, target.SourceIp, targetType, target.Labels.Kv)
 				if err != nil {
-					level.Warn(p.logger).Log("type", "MTR", "func", "CheckActiveTargets", "msg", fmt.Sprintf("Skipping target: %s", target.Host), "err", err)
+					level.Warn(p.logger).Log("type", targetType, "func", "CheckActiveTargets", "msg", fmt.Sprintf("Skipping target: %s", target.Host), "err", err)
 				}
 			}
 		}

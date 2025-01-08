@@ -183,6 +183,6 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 		}
 	}
 
-	// fmt.Printf("Mtr.result %+v\n", result)
+	fmt.Println("Mtr.result %+v\n", result)
 	return result, nil
 }

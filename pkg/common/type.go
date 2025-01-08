@@ -87,6 +87,8 @@ func ParseMtrType(t string) MtrType {
 		return MTR
 	case "MTRtcp":
 		return MTRtcp
+	case "ICMP+MTR":
+		return MTR
 	default:
 		return MTR
 	}

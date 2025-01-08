@@ -1,7 +1,7 @@
 # sdsdsd
 conf:
   refresh: 15m
-  # nameserver: 8.8.8.8:53 # Optional
+  nameserver: 8.8.8.8:53 # Optional
   nameserver_timeout: 250ms # Optional
 
 icmp:
@@ -25,7 +25,7 @@ http_get:
 
 targets:
   - name: internal
-    host: 192.168.0.1
+    host: 192.168.1.1
     type: ICMP
     probe:
       - hostname1
@@ -46,8 +46,8 @@ targets:
     host: 1.1.1.1:443
     source_ip: 192.168.1.1
     type: TCP
-  - name: cloudflare-dns-mtr_tcp
-    host: 1.1.1.1:443
+  - name: imperva-com-mtr_tcp
+    host: www.imperva.com:443
     type: MTRtcp
   - name: download-file-64M
     host: http://test-debit.free.fr/65536.rnd

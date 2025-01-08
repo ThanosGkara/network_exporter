@@ -9,7 +9,6 @@ import (
 	"github.com/syepes/network_exporter/pkg/common"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 // pkg/icmp/icmp.go
@@ -43,6 +42,32 @@ func TCPPing(destAddr string, srcAddr string, port int, ttl int, timeout time.Du
 	}
 	defer syscall.Close(fd)
 
+	// Bind the socket to the source IP address
+	if srcAddr != "" {
+		srcIp := net.ParseIP(srcAddr)
+		if srcIp == nil {
+			return hop, fmt.Errorf("source ip: %v is invalid", srcAddr)
+		}
+
+		if ipv6 {
+			sockaddr := &syscall.SockaddrInet6{
+				Addr: [16]byte{},
+			}
+			copy(sockaddr.Addr[:], srcIp.To16())
+			if err := syscall.Bind(fd, sockaddr); err != nil {
+				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
+			}
+		} else {
+			sockaddr := &syscall.SockaddrInet4{
+				Addr: [4]byte{},
+			}
+			copy(sockaddr.Addr[:], srcIp.To4())
+			if err := syscall.Bind(fd, sockaddr); err != nil {
+				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
+			}
+		}
+	}
+
 	// Set the TTL value for the socket
 	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_TTL, ttl); err != nil {
 		return hop, fmt.Errorf("failed to set TTL: %v", err)
@@ -67,6 +92,7 @@ func TCPPing(destAddr string, srcAddr string, port int, ttl int, timeout time.Du
 	if err != nil {
 		hop.Success = false
 		hop.Elapsed = elapsed
+		hop.Addr = conn.RemoteAddr().String()
 		return hop, err
 	}
 	defer conn.Close()
@@ -105,9 +131,9 @@ func listenForICMP(fd int, timeout time.Duration, ipv6 bool) (string, error) {
 		}
 
 		switch msg.Type {
-		case ipv4.ICMPTypeTimeExceeded, ipv6.ICMPTypeTimeExceeded:
+		case ipv4.ICMPTypeTimeExceeded:
 			return "Time Exceeded", nil
-		case ipv4.ICMPTypeEchoReply, ipv6.ICMPTypeEchoReply:
+		case ipv4.ICMPTypeEchoReply:
 			return "Echo Reply", nil
 		}
 	}
