@@ -3,6 +3,8 @@ package mtr
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/syepes/network_exporter/pkg/common"
@@ -97,17 +99,26 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 	seq := 0
 	for snt := 0; snt < options.Count(); snt++ {
 		for ttl := 1; ttl < options.MaxHops(); ttl++ {
+
+			var hopReturn common.IcmpReturn
+
 			if mtrReturns[ttl] == nil {
 				mtrReturns[ttl] = &MtrReturn{ttl: ttl, host: "unknown", succSum: 0, success: false, lastTime: time.Duration(0), sumTime: time.Duration(0), bestTime: time.Duration(0), worstTime: time.Duration(0), avgTime: time.Duration(0)}
 			}
 
 			switch mtrtype {
-			case common.MtrTypeICMP:
-				hopReturn, err := icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
-			case common.MtrTypeTCP:
-				hopReturn, err := tcp_ping.TCPPing()
+			case common.MTR:
+				hopReturn, err = icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
+			case common.MTRtcp:
+				ip_port_split := strings.Split(destAddr, ":")
+				prt, err := strconv.Atoi(ip_port_split[1])
+				if err != nil {
+					fmt.Println("Error:", err)
+					return result, fmt.Errorf("MTRtcp Invalid port number")
+				}
+				hopReturn, err = tcp_ping.TCPPing(ip_port_split[0], srcAddr, prt, ttl, timeout, ipv6)
 			default:
-				return nil, fmt.Errorf("MTR Invalid MTR type")
+				return result, fmt.Errorf("MTR Invalid MTR type")
 			}
 			if err != nil || !hopReturn.Success {
 				continue
