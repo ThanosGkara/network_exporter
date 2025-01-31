@@ -1,13 +1,12 @@
 package tcp_ping
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
 	"github.com/syepes/network_exporter/pkg/common"
-	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )
 
@@ -19,122 +18,68 @@ const (
 )
 
 // tcpPing performs a TCP ping to the destination address with a specific TTL
-func TCPPing(destAddr string, srcAddr string, port int, ttl int, timeout time.Duration, ipv6 bool) (common.IcmpReturn, error) {
+func TCPPing(destAddr string, srcAddr string, port int, pid int, ttl int, timeout time.Duration, ipv6_proto bool) (common.IcmpReturn, error) {
 	var hop common.IcmpReturn
+
 	dstIp := net.ParseIP(destAddr)
 	if dstIp == nil {
 		return hop, fmt.Errorf("destination ip: %v is invalid", destAddr)
 	}
 
-	ipAddr := net.JoinHostPort(destAddr, fmt.Sprintf("%d", port))
+	ipAddr := net.IPAddr{IP: dstIp}
 
-	// Create a raw socket for TCP
-	var ipver int
-	if ipv6 {
-		ipver = syscall.AF_INET6
-	} else {
-		ipver = syscall.AF_INET
-	}
-
-	fd, err := syscall.Socket(ipver, syscall.SOCK_RAW, syscall.IPPROTO_TCP)
-	if err != nil {
-		return hop, fmt.Errorf("failed to create raw socket: %v", err)
-	}
-	defer syscall.Close(fd)
-
-	// Bind the socket to the source IP address
 	if srcAddr != "" {
 		srcIp := net.ParseIP(srcAddr)
 		if srcIp == nil {
-			return hop, fmt.Errorf("source ip: %v is invalid", srcAddr)
+			return hop, fmt.Errorf("source ip: %v is invalid, target: %v", srcAddr, destAddr)
 		}
 
-		if ipv6 {
-			sockaddr := &syscall.SockaddrInet6{
-				Addr: [16]byte{},
-			}
-			copy(sockaddr.Addr[:], srcIp.To16())
-			if err := syscall.Bind(fd, sockaddr); err != nil {
-				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
-			}
+		if p4 := dstIp.To4(); len(p4) == net.IPv4len {
+			return tcpPing4(srcAddr, &ipAddr, ttl, pid, timeout, seq)
+		}
+		if ipv6_proto {
+			return tcpPing6(srcAddr, &ipAddr, ttl, pid, timeout, seq)
 		} else {
-			sockaddr := &syscall.SockaddrInet4{
-				Addr: [4]byte{},
-			}
-			copy(sockaddr.Addr[:], srcIp.To4())
-			if err := syscall.Bind(fd, sockaddr); err != nil {
-				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
-			}
+			return hop, nil
 		}
 	}
 
-	// Set the TTL value for the socket
-	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_TTL, ttl); err != nil {
-		return hop, fmt.Errorf("failed to set TTL: %v", err)
+	if p4 := dstIp.To4(); len(p4) == net.IPv4len {
+		return tcpPingv4("0.0.0.0", &ipAddr, ttl, pid, timeout, seq)
 	}
-
-	// Enable receiving ICMP error messages
-	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_RECVERR, 1); err != nil {
-		return hop, fmt.Errorf("failed to set IP_RECVERR: %v", err)
+	if ipv6_proto {
+		return tcpPingv6("::", &ipAddr, ttl, pid, timeout, seq)
+	} else {
+		return hop, nil
 	}
-
-	// Set the timeout for the socket
-	tv := syscall.NsecToTimeval(timeout.Nanoseconds())
-	if err := syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv); err != nil {
-		return hop, fmt.Errorf("failed to set timeout: %v", err)
-	}
-
-	// Send a TCP SYN packet
-	start := time.Now()
-	conn, err := net.DialTimeout("tcp", ipAddr, timeout)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		hop.Success = false
-		hop.Elapsed = elapsed
-		hop.Addr = conn.RemoteAddr().String()
-		return hop, err
-	}
-	defer conn.Close()
-
-	// Listen for ICMP responses
-	icmpResponse, err := listenForICMP(fd, timeout, ipv6)
-	if err != nil {
-		hop.Success = false
-		hop.Elapsed = elapsed
-		return hop, err
-	}
-
-	hop.Success = true
-	hop.Elapsed = elapsed
-	hop.Addr = icmpResponse
-	return hop, nil
 }
 
-// listenForICMP listens for ICMP responses
-func listenForICMP(fd int, timeout time.Duration, ipv6 bool) (string, error) {
-	buf := make([]byte, 1500)
-	for {
-		n, _, err := syscall.Recvfrom(fd, buf, 0)
-		if err != nil {
-			return "", err
-		}
-
-		var msg *icmp.Message
-		if ipv6 {
-			msg, err = icmp.ParseMessage(protocolIPv6ICMP, buf[:n])
-		} else {
-			msg, err = icmp.ParseMessage(protocolICMP, buf[:n])
-		}
-		if err != nil {
-			return "", err
-		}
-
-		switch msg.Type {
-		case ipv4.ICMPTypeTimeExceeded:
-			return "Time Exceeded", nil
-		case ipv4.ICMPTypeEchoReply:
-			return "Echo Reply", nil
-		}
+func tcpPingv4(localAddr string, dst net.Addr, ttl int, pid int, timeout time.Duration, seq int) (hop common.IcmpReturn, err error) {
+	hop.Success = false
+	start := time.Now()
+	// c, err := icmp.ListenPacket("ip4:icmp", localAddr)
+	var raw_pacekt ipv4.RawConn
+	c, err := ipv4.NewRawConn(raw_pacekt.IPConn)
+	if err != nil {
+		return hop, err
 	}
+	defer c.Close()
+
+	err = c.SetControlMessage(ipv4.FlagTTL, true)
+	if err != nil {
+		return hop, err
+	}
+
+	// if err = c.IPv4PacketConn().SetTTL(ttl); err != nil {
+	if err = c.SetTTL(ttl); err != nil {
+		return hop, err
+	}
+
+	if err = c.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return hop, err
+	}
+
+	bs := make([]byte, 4)
+	binary.LittleEndian.PutUint32(bs, uint32(seq))
+
 }

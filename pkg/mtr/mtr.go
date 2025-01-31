@@ -101,6 +101,7 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 		for ttl := 1; ttl < options.MaxHops(); ttl++ {
 
 			var hopReturn common.IcmpReturn
+			var hop_err error
 
 			if mtrReturns[ttl] == nil {
 				mtrReturns[ttl] = &MtrReturn{ttl: ttl, host: "unknown", succSum: 0, success: false, lastTime: time.Duration(0), sumTime: time.Duration(0), bestTime: time.Duration(0), worstTime: time.Duration(0), avgTime: time.Duration(0)}
@@ -108,7 +109,7 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 
 			switch mtrtype {
 			case common.MTR:
-				hopReturn, err = icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
+				hopReturn, hop_err = icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
 			case common.MTRtcp:
 				ip_port_split := strings.Split(destAddr, ":")
 				prt, err := strconv.Atoi(ip_port_split[1])
@@ -116,11 +117,12 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 					fmt.Println("Error:", err)
 					return result, fmt.Errorf("MTRtcp Invalid port number")
 				}
-				hopReturn, err = tcp_ping.TCPPing(ip_port_split[0], srcAddr, prt, ttl, timeout, ipv6)
+				hopReturn, hop_err = tcp_ping.TCPPing(ip_port_split[0], srcAddr, prt, pid, ttl, timeout, ipv6)
 			default:
 				return result, fmt.Errorf("MTR Invalid MTR type")
 			}
-			if err != nil || !hopReturn.Success {
+			if hop_err != nil || !hopReturn.Success {
+				fmt.Println("Error:", hop_err)
 				continue
 			}
 
@@ -183,6 +185,6 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mt
 		}
 	}
 
-	fmt.Println("Mtr.result %+v\n", result)
+	fmt.Printf("Mtr.result %+v\n", result)
 	return result, nil
 }

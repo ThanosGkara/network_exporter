@@ -24,35 +24,35 @@ http_get:
   timeout: 5s
 
 targets:
-  - name: internal
-    host: 192.168.1.1
-    type: ICMP
-    probe:
-      - hostname1
-      - hostname2
-    labels:
-      dc: home
-      rack: a1
-  - name: google-dns1
-    host: 8.8.8.8
-    type: ICMP
-  - name: google-dns2
-    host: 8.8.4.4
-    type: MTR
-  - name: cloudflare-dns
-    host: 1.1.1.1
-    type: ICMP+MTR
-  - name: cloudflare-dns-https
-    host: 1.1.1.1:443
-    source_ip: 192.168.1.1
-    type: TCP
+  # - name: internal
+  #   host: 192.168.1.1
+  #   type: ICMP
+  #   probe:
+  #     - hostname1
+  #     - hostname2
+  #   labels:
+  #     dc: home
+  #     rack: a1
+  # - name: google-dns1
+  #   host: 8.8.8.8
+  #   type: ICMP
+  # - name: google-dns2
+  #   host: 8.8.4.4
+  #   type: MTR
+  # - name: cloudflare-dns
+  #   host: 1.1.1.1
+  #   type: ICMP+MTR
+  # - name: cloudflare-dns-https
+  #   host: 1.1.1.1:443
+  #   source_ip: 192.168.1.30
+  #   type: TCP
   - name: imperva-com-mtr_tcp
     host: www.imperva.com:443
     type: MTRtcp
-  - name: download-file-64M
-    host: http://test-debit.free.fr/65536.rnd
-    type: HTTPGet
-  - name: download-file-64M-proxy
-    host: http://test-debit.free.fr/65536.rnd
-    type: HTTPGet
-    proxy: http://localhost:3128
+  # - name: download-file-64M
+  #   host: http://test-debit.free.fr/65536.rnd
+  #   type: HTTPGet
+  # - name: download-file-64M-proxy
+  #   host: http://test-debit.free.fr/65536.rnd
+  #   type: HTTPGet
+  #   proxy: http://localhost:3128
