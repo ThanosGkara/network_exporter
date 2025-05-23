@@ -91,7 +91,7 @@ func icmpIpv4(localAddr string, dst net.Addr, ttl int, pid int, timeout time.Dur
 		return hop, err
 	}
 
-	peer, _, err := listenForSpecific4(c, append(bs, 'x'), pid, seq, wb)
+	peer, _, err := listenForSpecific4(c, append(bs, 'x'), pid, seq)
 	if err != nil {
 		return hop, err
 	}
@@ -153,7 +153,7 @@ func icmpIpv6(localAddr string, dst net.Addr, ttl, pid int, timeout time.Duratio
 }
 
 // Listen IPv4 icmp returned packet and verify the content
-func listenForSpecific4(conn *icmp.PacketConn, neededBody []byte, needID int, needSeq int, sent []byte) (string, []byte, error) {
+func listenForSpecific4(conn *icmp.PacketConn, neededBody []byte, needID int, needSeq int) (string, []byte, error) {
 	for {
 		b := make([]byte, 1500)
 		n, peer, err := conn.ReadFrom(b)
