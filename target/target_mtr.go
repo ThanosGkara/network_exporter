@@ -14,42 +14,44 @@ import (
 
 // MTR Object
 type MTR struct {
-	logger    *slog.Logger
-	icmpID    *common.IcmpID
-	name      string
-	host      string
-	srcAddr   string
-	interval  time.Duration
-	timeout   time.Duration
-	maxHops   int
-	count     int
-	ipv6      bool
-	labels    map[string]string
-	result    *mtr.MtrResult
-	stop      chan struct{}
-	wg        sync.WaitGroup
+	logger   *slog.Logger
+	icmpID   *common.IcmpID
+	name     string
+	host     string
+	srcAddr  string
+	interval time.Duration
+	timeout  time.Duration
+	maxHops  int
+	count    int
+	mtrtype  common.MtrType
+	ipv6     bool
+	labels   map[string]string
+	result   *mtr.MtrResult
+	stop     chan struct{}
+	wg       sync.WaitGroup
 	sync.RWMutex
 }
 
 // NewMTR starts a new monitoring goroutine
-func NewMTR(logger *slog.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, labels map[string]string, ipv6 bool) (*MTR, error) {
+func NewMTR(logger *slog.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, mtrtype common.MtrType, labels map[string]string, ipv6 bool) (*MTR, error) {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	t := &MTR{
-		logger:    logger,
-		icmpID:    icmpID,
-		name:      name,
-		host:      host,
-		srcAddr:   srcAddr,
-		interval:  interval,
-		timeout:   timeout,
-		maxHops:   maxHops,
-		count:     count,
-		ipv6:      ipv6,
-		labels:    labels,
-		stop:      make(chan struct{}),
-		result:    &mtr.MtrResult{HopSummaryMap: map[string]*common.IcmpSummary{}},
+		logger:   logger,
+		icmpID:   icmpID,
+		name:     name,
+		host:     host,
+		srcAddr:  srcAddr,
+		interval: interval,
+		timeout:  timeout,
+		maxHops:  maxHops,
+		count:    count,
+		mtrtype:  mtrtype, // initialize with MTR as default
+		ipv6:     ipv6,
+		labels:   labels,
+		stop:     make(chan struct{}),
+		result:   &mtr.MtrResult{HopSummaryMap: map[string]*common.IcmpSummary{}},
 	}
 	t.wg.Add(1)
 	go t.run(startupDelay)
@@ -90,7 +92,7 @@ func (t *MTR) Stop() {
 
 func (t *MTR) mtr() {
 	icmpID := int(t.icmpID.Get())
-	data, err := mtr.Mtr(t.host, t.srcAddr, t.maxHops, t.count, t.timeout, icmpID, t.ipv6)
+	data, err := mtr.Mtr(t.host, t.srcAddr, t.maxHops, t.count, t.timeout, icmpID, t.mtrtype, t.ipv6)
 	if err != nil {
 		t.logger.Error("MTR failed", "type", "MTR", "func", "mtr", "err", err)
 	}

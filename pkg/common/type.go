@@ -65,3 +65,31 @@ type IcmpHop struct {
 	RangeTime            time.Duration `json:"range"`
 	Loss                 float64       `json:"loss"`
 }
+
+// Define a new type for the enum
+type MtrType int
+
+// MTR Type Enum
+const (
+	MTR MtrType = iota
+	MTRtcp
+)
+
+// Convert the enum to a string
+func (mt MtrType) String() string {
+	return [...]string{"MTR", "MTRtcp"}[mt]
+}
+
+// Convert the string to an enum
+func ParseMtrType(t string) MtrType {
+	switch t {
+	case "MTR":
+		return MTR
+	case "MTRtcp":
+		return MTRtcp
+	case "ICMP+MTR":
+		return MTR
+	default:
+		return MTR
+	}
+}

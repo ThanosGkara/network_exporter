@@ -1,0 +1,164 @@
+package tcp_ping
+
+import (
+	"encoding/binary"
+	"fmt"
+	"net"
+	"syscall"
+	"time"
+
+	"github.com/syepes/network_exporter/pkg/common"
+	"github.com/syepes/network_exporter/pkg/icmp"
+)
+
+// pkg/icmp/icmp.go
+// https://hechao.li/2018/09/27/How-Is-Ping-Deduplexed/
+const (
+	protocolICMP     = 1  // Internet Control Message
+	protocolIPv6ICMP = 58 // ICMP for IPv6
+)
+
+// tcpPing performs a TCP ping to the destination address with a specific TTL
+func TCPPing(destAddr string, srcAddr string, port int, pid int, ttl int, timeout time.Duration, ipv6_proto bool) (common.IcmpReturn, error) {
+	var hop common.IcmpReturn
+
+	dstIp := net.ParseIP(destAddr)
+	if dstIp == nil {
+		return hop, fmt.Errorf("destination ip: %v is invalid", destAddr)
+	}
+
+	// Create a raw socket for TCP
+	var ipver int
+	if ipv6_proto {
+		ipver = syscall.AF_INET6
+	} else {
+		ipver = syscall.AF_INET
+	}
+
+	fd, err1 := syscall.Socket(ipver, syscall.SOCK_RAW, syscall.IPPROTO_TCP)
+	if err1 != nil {
+		return hop, fmt.Errorf("failed to create raw socket: %v", err1)
+	}
+	defer syscall.Close(fd)
+
+	// Set the socket to non-blocking mode
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		return hop, fmt.Errorf("failed to set non-blocking mode: %v", err)
+	}
+
+	// Set the TTL value for the socket
+	if ipv6_proto {
+		if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IPV6, syscall.IPV6_UNICAST_HOPS, ttl); err != nil {
+			return hop, fmt.Errorf("failed to set IPv6 TTL: %v", err)
+		}
+	} else {
+		if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_TTL, ttl); err != nil {
+			return hop, fmt.Errorf("failed to set IPv4 TTL: %v", err)
+		}
+	}
+
+	// Bind the socket to the source IP address
+	if srcAddr != "" {
+		srcIp := net.ParseIP(srcAddr)
+		if srcIp == nil {
+			return hop, fmt.Errorf("source ip: %v is invalid", srcAddr)
+		}
+
+		fmt.Printf("Binding to source IP: %v\n", srcIp)
+
+		if ipv6_proto {
+			sockaddr := &syscall.SockaddrInet6{
+				Addr: [16]byte{},
+			}
+			copy(sockaddr.Addr[:], srcIp.To16())
+			if err := syscall.Bind(fd, sockaddr); err != nil {
+				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
+			}
+		} else {
+			sockaddr := &syscall.SockaddrInet4{
+				Addr: [4]byte{},
+			}
+			copy(sockaddr.Addr[:], srcIp.To4())
+			if err := syscall.Bind(fd, sockaddr); err != nil {
+				return hop, fmt.Errorf("failed to bind socket to source address: %v", err)
+			}
+		}
+	}
+
+	// Construct the TCP SYN packet
+	packet, err2 := constructTCPSYNPacket(srcAddr, destAddr, port)
+	if err2 != nil {
+		return hop, fmt.Errorf("failed to construct TCP SYN packet: %v", err2)
+	}
+
+	// Send the TCP SYN packet
+	start := time.Now()
+	if err := syscall.Sendto(fd, packet, 0, &syscall.SockaddrInet4{Addr: [4]byte{dstIp[12], dstIp[13], dstIp[14], dstIp[15]}}); err != nil {
+		return hop, fmt.Errorf("failed to send TCP SYN packet: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	// Listen for ICMP responses
+	var peer string
+	var err_icmp error
+	if ipv6_proto {
+		peer, _, err_icmp = icmp.ListenForSpecific6(fd, timeout)
+	} else {
+		peer, _, err_icmp = icmp.ListenForSpecific4(fd, timeout)
+	}
+
+	if err_icmp != nil {
+		hop.Success = false
+		hop.Elapsed = elapsed
+		return hop, err_icmp
+	}
+
+	hop.Success = true
+	hop.Elapsed = elapsed
+	hop.Addr = peer
+	return hop, nil
+}
+
+// constructTCPSYNPacket constructs a TCP SYN packet
+func constructTCPSYNPacket(srcAddr, destAddr string, port int) ([]byte, error) {
+	srcIp := net.ParseIP(srcAddr).To4()
+	dstIp := net.ParseIP(destAddr).To4()
+
+	tcpHeader := make([]byte, 20)
+	binary.BigEndian.PutUint16(tcpHeader[0:2], uint16(12345)) // Source port
+	binary.BigEndian.PutUint16(tcpHeader[2:4], uint16(port))  // Destination port
+	binary.BigEndian.PutUint32(tcpHeader[4:8], 0)             // Sequence number
+	binary.BigEndian.PutUint32(tcpHeader[8:12], 0)            // Acknowledgment number
+	tcpHeader[12] = 0x50                                      // Data offset
+	tcpHeader[13] = 0x02                                      // Flags (SYN)
+	binary.BigEndian.PutUint16(tcpHeader[14:16], 0xFFFF)      // Window size
+	binary.BigEndian.PutUint16(tcpHeader[16:18], 0)           // Checksum (to be calculated)
+	binary.BigEndian.PutUint16(tcpHeader[18:20], 0)           // Urgent pointer
+
+	// Calculate the checksum
+	checksum := calculateChecksum(tcpHeader, srcIp, dstIp)
+	binary.BigEndian.PutUint16(tcpHeader[16:18], checksum)
+
+	return tcpHeader, nil
+}
+
+// calculateChecksum calculates the checksum for the TCP header
+func calculateChecksum(header []byte, srcIp, dstIp net.IP) uint16 {
+	sum := 0
+	for i := 0; i < len(header); i += 2 {
+		sum += int(binary.BigEndian.Uint16(header[i : i+2]))
+	}
+	for i := 0; i < len(srcIp); i += 2 {
+		sum += int(binary.BigEndian.Uint16(srcIp[i : i+2]))
+	}
+	for i := 0; i < len(dstIp); i += 2 {
+		sum += int(binary.BigEndian.Uint16(dstIp[i : i+2]))
+	}
+	sum += int(syscall.IPPROTO_TCP)
+	sum += len(header)
+
+	for sum > 0xFFFF {
+		sum = (sum >> 16) + (sum & 0xFFFF)
+	}
+	return uint16(^sum)
+}

@@ -3,14 +3,17 @@ package mtr
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/syepes/network_exporter/pkg/common"
 	"github.com/syepes/network_exporter/pkg/icmp"
+	"github.com/syepes/network_exporter/pkg/tcp_ping"
 )
 
 // Mtr Return traceroute object
-func Mtr(addr string, srcAddr string, maxHops int, count int, timeout time.Duration, icmpID int, ipv6 bool) (*MtrResult, error) {
+func Mtr(addr string, srcAddr string, maxHops int, count int, timeout time.Duration, icmpID int, mtrtype common.MtrType, ipv6 bool) (*MtrResult, error) {
 	var out MtrResult
 	var err error
 
@@ -19,7 +22,7 @@ func Mtr(addr string, srcAddr string, maxHops int, count int, timeout time.Durat
 	options.SetCount(count)
 	options.SetTimeout(timeout)
 
-	out, err = runMtr(addr, srcAddr, icmpID, &options, ipv6)
+	out, err = runMtr(addr, srcAddr, icmpID, &options, mtrtype, ipv6)
 
 	if err == nil {
 		if len(out.Hops) == 0 {
@@ -33,7 +36,7 @@ func Mtr(addr string, srcAddr string, maxHops int, count int, timeout time.Durat
 }
 
 // MtrString Console print traceroute operation
-func MtrString(addr string, srcAddr string, maxHops int, count int, timeout time.Duration, icmpID int, ipv6 bool) (result string, err error) {
+func MtrString(addr string, srcAddr string, maxHops int, count int, timeout time.Duration, icmpID int, mtrtype common.MtrType, ipv6 bool) (result string, err error) {
 	options := MtrOptions{}
 	options.SetMaxHops(maxHops)
 	options.SetCount(count)
@@ -43,7 +46,7 @@ func MtrString(addr string, srcAddr string, maxHops int, count int, timeout time
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("Start: %v, DestAddr: %v\n", time.Now().Format("2006-01-02 15:04:05"), addr))
 
-	out, err = runMtr(addr, srcAddr, icmpID, &options, ipv6)
+	out, err = runMtr(addr, srcAddr, icmpID, &options, mtrtype, ipv6)
 
 	if err == nil {
 		if len(out.Hops) == 0 {
@@ -83,7 +86,7 @@ func MtrString(addr string, srcAddr string, maxHops int, count int, timeout time
 }
 
 // MTR
-func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, ipv6 bool) (result MtrResult, err error) {
+func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, mtrtype common.MtrType, ipv6 bool) (result MtrResult, err error) {
 	result.Hops = []common.IcmpHop{}
 	result.DestAddr = destAddr
 
@@ -96,12 +99,30 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, ip
 	seq := 0
 	for snt := 0; snt < options.Count(); snt++ {
 		for ttl := 1; ttl < options.MaxHops(); ttl++ {
+
+			var hopReturn common.IcmpReturn
+			var hop_err error
+
 			if mtrReturns[ttl] == nil {
 				mtrReturns[ttl] = &MtrReturn{ttl: ttl, host: "unknown", succSum: 0, success: false, lastTime: time.Duration(0), sumTime: time.Duration(0), bestTime: time.Duration(0), worstTime: time.Duration(0), avgTime: time.Duration(0)}
 			}
 
-			hopReturn, err := icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
-			if err != nil || !hopReturn.Success {
+			switch mtrtype {
+			case common.MTR:
+				hopReturn, hop_err = icmp.Icmp(destAddr, srcAddr, ttl, pid, timeout, seq, ipv6)
+			case common.MTRtcp:
+				ip_port_split := strings.Split(destAddr, ":")
+				prt, err := strconv.Atoi(ip_port_split[1])
+				if err != nil {
+					fmt.Println("Error:", err)
+					return result, fmt.Errorf("MTRtcp Invalid port number")
+				}
+				hopReturn, hop_err = tcp_ping.TCPPing(ip_port_split[0], srcAddr, prt, pid, ttl, timeout, ipv6)
+			default:
+				return result, fmt.Errorf("MTR Invalid MTR type")
+			}
+			if hop_err != nil || !hopReturn.Success {
+				fmt.Println("Error:", hop_err)
 				continue
 			}
 
@@ -164,6 +185,6 @@ func runMtr(destAddr string, srcAddr string, icmpID int, options *MtrOptions, ip
 		}
 	}
 
-	// fmt.Printf("Mtr.result %+v\n", result)
+	fmt.Printf("Mtr.result %+v\n", result)
 	return result, nil
 }
