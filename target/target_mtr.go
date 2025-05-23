@@ -2,20 +2,19 @@ package target
 
 import (
 	"encoding/json"
-	"fmt"
+	"log/slog"
+	"os"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/syepes/network_exporter/pkg/common"
 	"github.com/syepes/network_exporter/pkg/mtr"
 )
 
 // MTR Object
 type MTR struct {
-	logger   log.Logger
+	logger   *slog.Logger
 	icmpID   *common.IcmpID
 	name     string
 	host     string
@@ -34,9 +33,9 @@ type MTR struct {
 }
 
 // NewMTR starts a new monitoring goroutine
-func NewMTR(logger log.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, mtrtype common.MtrType, labels map[string]string, ipv6 bool) (*MTR, error) {
+func NewMTR(logger *slog.Logger, icmpID *common.IcmpID, startupDelay time.Duration, name string, host string, srcAddr string, interval time.Duration, timeout time.Duration, maxHops int, count int, mtrtype common.MtrType, labels map[string]string, ipv6 bool) (*MTR, error) {
 	if logger == nil {
-		logger = log.NewNopLogger()
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	t := &MTR{
 		logger:   logger,
@@ -95,7 +94,7 @@ func (t *MTR) mtr() {
 	icmpID := int(t.icmpID.Get())
 	data, err := mtr.Mtr(t.host, t.srcAddr, t.maxHops, t.count, t.timeout, icmpID, t.mtrtype, t.ipv6)
 	if err != nil {
-		level.Error(t.logger).Log("type", "MTR", "func", "mtr", "msg", fmt.Sprintf("%s", err))
+		t.logger.Error("MTR failed", "type", "MTR", "func", "mtr", "err", err)
 	}
 
 	t.Lock()
@@ -118,9 +117,9 @@ func (t *MTR) mtr() {
 
 	bytes, err2 := json.Marshal(t.result)
 	if err2 != nil {
-		level.Error(t.logger).Log("type", "MTR", "func", "mtr", "msg", fmt.Sprintf("%s", err2))
+		t.logger.Error("Failed to marshal result", "type", "MTR", "func", "mtr", "err", err2)
 	}
-	level.Debug(t.logger).Log("type", "MTR", "func", "mtr", "msg", bytes)
+	t.logger.Debug("MTR result", "type", "MTR", "func", "mtr", "result", string(bytes))
 }
 
 // Compute returns the results of the MTR metrics
