@@ -17,6 +17,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/creasty/defaults v1.8.0
 	github.com/felixge/fgprof v0.9.5
+	github.com/google/gopacket v1.1.19
 	github.com/prometheus/exporter-toolkit v0.12.0
 )
 
